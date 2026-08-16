@@ -53,7 +53,26 @@ python -m glasses_detector.train --data-dir data --out checkpoints/glasses.pt
 ```
 
 Trains in minutes on a GPU, and is feasible on CPU with a subset. Expect
-~98%+ validation accuracy on CelebA.
+~98%+ validation accuracy on CelebA. Training handles class imbalance with
+a positive-class loss weight, reports precision/recall/AUC per epoch, keeps
+the best checkpoint by validation AUC, and stops early when validation AUC
+plateaus.
+
+## 2b. Calibrate the threshold
+
+For onboarding, missing glasses is usually worse than asking the user to
+re-capture, so don't ship the default 0.5 threshold — pick one from
+validation data:
+
+```bash
+python -m glasses_detector.calibrate \
+    --checkpoint checkpoints/glasses.pt --data-dir data \
+    --target-recall 0.99 --out threshold.json
+```
+
+This finds the highest threshold that still catches 99% of glasses frames
+and reports the false-rejection cost, plus a table of other operating
+points. Feed the result to the service via `GLASSES_THRESHOLD`.
 
 ## 3. Use it
 
@@ -73,7 +92,8 @@ result.uncertain        # True near the threshold -> ask user to retry capture
 ### As a service
 
 ```bash
-GLASSES_CHECKPOINT=checkpoints/glasses.pt uvicorn glasses_detector.api:app --port 8000
+GLASSES_CHECKPOINT=checkpoints/glasses.pt GLASSES_THRESHOLD=0.42 \
+    uvicorn glasses_detector.api:app --port 8000
 ```
 
 ```bash
@@ -112,11 +132,26 @@ pytest tests/
 
 ## Notes & tuning
 
-- **Threshold:** default 0.5. If missing glasses is costlier than a false
-  rejection (usual case for onboarding compliance), lower the threshold
-  (e.g. 0.35) so borderline cases fail toward "glasses detected".
+- **Threshold:** use `glasses_detector.calibrate` to pick it from validation
+  data rather than shipping the 0.5 default (see 2b above).
 - **Uncertainty band:** default ±0.15 around the threshold; widen it to be
   stricter about frame quality.
+- **Test-time augmentation:** `GlassesDetector` averages the prediction with
+  a mirrored copy by default (one extra forward pass). Disable with
+  `tta=False` if latency matters more than stability.
 - **Sunglasses vs. clear glasses:** CelebA's attribute covers both. If you need
   to distinguish them (e.g. sunglasses always rejected, clear glasses allowed),
   retrain with three classes — the pipeline structure stays the same.
+
+## Improving accuracy over time
+
+The two changes that matter most are data, not code:
+
+1. **Fine-tune on your own captures.** CelebA is well-lit photography; your
+   users are on webcams and phone cameras. A few thousand face crops from the
+   real capture pipeline, labeled and added to `data/train`, will beat any
+   architecture tweak.
+2. **Mine hard negatives.** Collect frames the model gets wrong or flags as
+   uncertain in production (sunglasses on the head, thick eyebrows, harsh
+   shadows, reflections), label them, and retrain. Repeat — each round
+   targets exactly the failure modes your traffic actually has.

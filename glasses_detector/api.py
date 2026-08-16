@@ -35,7 +35,9 @@ class ValidationResponse(BaseModel):
 def load_model():
     global _detector
     checkpoint = os.environ.get("GLASSES_CHECKPOINT", "checkpoints/glasses.pt")
-    _detector = GlassesDetector(checkpoint)
+    # Set from `python -m glasses_detector.calibrate` output; 0.5 otherwise.
+    threshold = float(os.environ.get("GLASSES_THRESHOLD", "0.5"))
+    _detector = GlassesDetector(checkpoint, threshold=threshold)
 
 
 @app.get("/health")

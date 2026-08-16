@@ -36,12 +36,17 @@ class GlassesDetector:
         device: str = None,
         threshold: float = 0.5,
         uncertainty_band: float = 0.15,
+        tta: bool = True,
     ):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = load_checkpoint(str(checkpoint), self.device)
         self.transform = eval_transforms()
         self.threshold = threshold
         self.uncertainty_band = uncertainty_band
+        # Test-time augmentation: average the prediction with its mirror
+        # image. Costs a second forward pass, reduces variance on
+        # off-center or tilted captures.
+        self.tta = tta
 
     def _to_tensor(self, image: ImageInput) -> torch.Tensor:
         if isinstance(image, (str, Path)):
@@ -54,7 +59,9 @@ class GlassesDetector:
     @torch.no_grad()
     def predict(self, image: ImageInput) -> GlassesResult:
         tensor = self._to_tensor(image)
-        probability = torch.sigmoid(self.model(tensor)).item()
+        if self.tta:
+            tensor = torch.cat([tensor, torch.flip(tensor, dims=[3])])
+        probability = torch.sigmoid(self.model(tensor)).mean().item()
         wearing = probability >= self.threshold
         confidence = probability if wearing else 1.0 - probability
         uncertain = abs(probability - self.threshold) < self.uncertainty_band
