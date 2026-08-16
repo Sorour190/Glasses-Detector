@@ -40,6 +40,9 @@ def train_transforms() -> transforms.Compose:
         transforms.RandomRotation(10),
         transforms.ToTensor(),
         transforms.Normalize(MEAN, STD),
+        # Simulate partial occlusion (hair, hands, cropped frames) so the
+        # model can't rely on any single region always being visible.
+        transforms.RandomErasing(p=0.25, scale=(0.02, 0.12)),
     ])
 
 
