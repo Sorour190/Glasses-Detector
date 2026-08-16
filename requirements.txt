@@ -1,0 +1,13 @@
+torch>=2.1
+torchvision>=0.16
+pillow>=10.0
+numpy>=1.24
+
+# API serving
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+
+# ONNX export / runtime (optional, for production inference)
+onnx>=1.15
+onnxruntime>=1.17
