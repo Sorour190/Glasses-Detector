@@ -1,7 +1,10 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-checkpoints/
-data/
-*.onnx
 .venv/
+data/
+runs/
+models/*.zip
+models/w600k_mbf.onnx
+checkpoints/
+*.npy
