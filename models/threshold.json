@@ -1,0 +1,10 @@
+{
+  "T": 0.5964,
+  "t_low": 0.15,
+  "t_high": 0.235,
+  "band_crossed": false,
+  "abstain_rate_cal": 0.0023,
+  "cal_n": 7729,
+  "checkpoint": "runs/R5/best.pt",
+  "cal_metrics_at_0.5": "acc=0.9907 p=0.9912 r=0.9815 f1=0.9863 auc=0.9992 sun_fpr=0.0082 ece=0.0055"
+}

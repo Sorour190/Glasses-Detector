@@ -39,12 +39,21 @@ class GlassesDetector:
     def __init__(self, checkpoint: Union[str, Path],
                  scrfd_model: Union[str, Path] = "models/det_500m.onnx",
                  device: str | None = None, threshold: float = 0.5,
-                 uncertainty_band: float = 0.15):
+                 uncertainty_band: float = 0.15,
+                 threshold_file: Union[str, Path, None] = "models/threshold.json"):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = load_checkpoint(str(checkpoint), self.device)
         self.detector = SCRFD(scrfd_model)
         self.threshold = threshold
         self.uncertainty_band = uncertainty_band
+        # calibrated operating point (temperature + abstain band), if present
+        self.temperature, self.band = 1.0, None
+        if threshold_file and Path(threshold_file).exists():
+            import json
+            cfg = json.loads(Path(threshold_file).read_text())
+            self.temperature = cfg.get("T", 1.0)
+            self.band = (cfg["t_low"], cfg["t_high"])
+            self.threshold = cfg["t_high"]
 
     def _load_bgr(self, image: ImageInput) -> np.ndarray:
         if isinstance(image, (str, Path)):
@@ -67,10 +76,14 @@ class GlassesDetector:
         rgb = (rgb - np.array(MEAN, dtype=np.float32)) / np.array(STD, dtype=np.float32)
         x = torch.from_numpy(rgb.transpose(2, 0, 1)).unsqueeze(0).to(self.device)
 
-        probs = torch.softmax(self.model(x), dim=1)[0].cpu().numpy()
+        logits = self.model(x)[0] / self.temperature
+        probs = torch.softmax(logits, dim=0).cpu().numpy()
         probability = float(probs[1])
         wearing = probability >= self.threshold
         confidence = probability if wearing else 1.0 - probability
-        uncertain = abs(probability - self.threshold) < self.uncertainty_band
+        if self.band is not None:
+            uncertain = self.band[0] <= probability < self.band[1]
+        else:
+            uncertain = abs(probability - self.threshold) < self.uncertainty_band
         return GlassesResult(wearing, confidence, probability, uncertain,
                              True, det_score, tuple(round(float(p), 4) for p in probs))

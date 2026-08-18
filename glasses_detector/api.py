@@ -45,9 +45,11 @@ class ValidationResponse(BaseModel):
 
 
 def _default_checkpoint() -> str:
+    if Path("models/glasses_v1.pt").exists():          # shipped release model
+        return "models/glasses_v1.pt"
     runs = sorted(Path("runs").glob("*/best.pt"), key=os.path.getmtime)
     if not runs:
-        raise FileNotFoundError("no runs/*/best.pt found; train a model first")
+        raise FileNotFoundError("no model found; train one or fetch models/glasses_v1.pt")
     return str(runs[-1])
 
 
