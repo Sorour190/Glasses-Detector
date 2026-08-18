@@ -51,8 +51,15 @@ strictly comparable — which is why frozen benchmarks (SoF) matter.
 
 ## 2. How it works
 
+Two components: the **face finder** (SCRFD — an off-the-shelf detector, the same
+`det_500m.onnx` the company's production pipeline already runs; reused
+deliberately for train/serve parity, it knows nothing about glasses) and the
+**glasses classifier** (built in this project: data, labels, training,
+calibration are all ours; its backbone starts from generic ImageNet-pretrained
+weights, standard transfer learning, then all weights are fine-tuned here).
+
 ```
-photo → SCRFD face detector (det_500m.onnx, the production detector)
+photo → SCRFD face detector (det_500m.onnx — reused production component)
       → 5 landmarks (eyes, nose, mouth corners)
       → ROI-v1 crop: de-rotate so the eye line is horizontal, crop 3.0d×2.0d
         around the eyes (d = inter-ocular distance) → 160×160
