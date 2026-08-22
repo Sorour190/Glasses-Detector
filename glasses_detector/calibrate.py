@@ -92,6 +92,14 @@ def main():
         "cal_n": len(labels), "checkpoint": args.checkpoint,
         "cal_metrics_at_0.5": str(m),
     }
+    # keep a hand-tuned multi-frame "aggregate" block if the file already has one
+    if Path(args.out).exists():
+        try:
+            prev = json.loads(Path(args.out).read_text())
+            if "aggregate" in prev:
+                out["aggregate"] = prev["aggregate"]
+        except json.JSONDecodeError:
+            pass
     Path(args.out).write_text(json.dumps(out, indent=2))
     print(json.dumps(out, indent=2))
 

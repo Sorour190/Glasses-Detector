@@ -8,3 +8,5 @@ models/*.zip
 models/w600k_mbf.onnx
 checkpoints/
 *.npy
+logs/
+certs/

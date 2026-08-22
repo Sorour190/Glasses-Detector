@@ -68,6 +68,53 @@ photo → SCRFD face detector (det_500m.onnx — reused production component)
       → decision: ≥0.235 glasses · <0.15 no glasses · between = retry capture
 ```
 
+### Multi-frame verdict & quality gate (the production-line decision)
+
+The line captures at 5 fps. One motion-blurred frame can hide a frame/temples
+and score "no glasses", so a single frame never decides. The client sends a
+burst of 5 frames (≈1 s) to `POST /validate/glasses/batch` and gets ONE verdict
+(`glasses_detector/aggregate.py`):
+
+```
+per frame   quality gate: face found · det_score ≥ 0.6 · eye distance ≥ 24 px
+            · blur (Laplacian variance of the 160px crop) ≥ 30     else REJECTED
+            usable frames vote on eyewear = P(eyeglasses)+P(sunglasses):
+            eyewear ≥ 0.5 → glasses · < 0.2 → none · else unsure
+            (sunglasses STOP the process too — the verification gate needs a bare face;
+             `vote_on="eyeglasses"` restores the legacy P(eyeglasses)-only band)
+verdict     1. glasses votes ≥ 2                     → remove_glasses   (safety first)
+            2. usable frames < 3                     → retry_capture, reason = dominant
+                                                       reject cause (blurry / no_face / too_far / low_det)
+            3. none votes ≥ ceil(0.8 × usable)       → pass             (4 of 5)
+            4. otherwise                             → retry_capture, reason = mixed
+```
+
+Knobs (`AggregateConfig`): `n_frames, min_valid, pass_ratio, fail_votes,
+min_det_score, min_blur, min_eye_dist, vote_on, eyewear_t_low, eyewear_t_high`. Precedence: defaults ← `"aggregate": {…}`
+block in `models/threshold.json` (kept across re-calibration) ← env
+`GLASSES_AGG_<KNOB>` (e.g. `GLASSES_AGG_MIN_BLUR=40`). `min_blur=30` is a
+conservative starting point — tune it from the line camera with the log below.
+(`GLASSES_THRESHOLD` only applies when `threshold.json` is absent; the calibrated
+band wins otherwise.)
+
+**Logging & tuning.** Start the server with `GLASSES_LOG_DIR=logs/live`
+(`GLASSES_LOG_FULL=1` to also keep full frames): every frame is appended to
+`logs/live/frames.csv` (`p`, class probs, `det_score`, `blur_score`, `eye_dist`,
+quality verdict, burst verdict, crop path) and its 160×160 crop saved under
+`crops/`. The Live tab has an "I am actually: wearing / not wearing / unknown"
+toggle that is sent as `truth` and logged, so
+`python scripts/review_log.py logs/live` can print truth×prediction tables,
+blur distributions of correct vs. wrong frames, a suggested `min_blur`, and
+write `review/mismatches.png` — a contact sheet of the wrongly-scored crops.
+
+First live session (49 bursts, glasses on, phone camera, deliberate shaking):
+the quality gate rejected 53 frames (36 of which would have voted "none"),
+0 false passes once the glasses-on-forehead bursts are excluded, and the
+dominant residual error was the model scoring clear/black frames as
+*sunglasses* (~40 of 177 valid frames) — which is why the vote moved to
+eyewear = 1 − P(none). Blur did not separate right from wrong frames
+(`min_blur=30` left as is).
+
 Why a 3-class head for a binary product? Sunglasses share the discriminative
 feature (a frame) with eyeglasses and differ on one (lens transmittance).
 Giving them their own logit gives the hard-negative boundary its own gradient
@@ -111,8 +158,11 @@ Hygiene that made the numbers trustworthy:
 | `glasses_detector/metrics.py` | per-condition eval, ECE, error contact sheets |
 | `glasses_detector/calibrate.py` | temperature + t_low/t_high on the cal split |
 | `glasses_detector/export_onnx.py` | ONNX export with baked normalization + parity test |
-| `glasses_detector/predict.py` / `api.py` | inference class + upload web app |
-| `scripts/` | manifest building, tier ingest, dedup merge, crop cache, pseudo-label, web test |
+| `glasses_detector/predict.py` / `api.py` | inference class (+ blur / eye-distance quality signals) + web app with single-frame and 5-frame burst endpoints |
+| `glasses_detector/aggregate.py` | multi-frame verdict rule + quality gate (`AggregateConfig`) |
+| `glasses_detector/framelog.py` | opt-in per-frame CSV + crop logging (`GLASSES_LOG_DIR`) |
+| `scripts/` | manifest building, tier ingest, dedup merge, crop cache, pseudo-label, web test, `review_log.py` (tune the gate from logged frames) |
+| `tests/test_aggregate.py` | unit tests for the verdict rule |
 
 ## 5. Running it
 
@@ -120,8 +170,16 @@ Hygiene that made the numbers trustworthy:
 pip install -r requirements.txt
 # CUDA training build: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 
-# Web app (open http://127.0.0.1:8000, drop a photo in)
-uvicorn glasses_detector.api:app
+# Web app (open http://127.0.0.1:8000, drop a photo in); phone/live camera: scripts/serve_https.sh
+GLASSES_LOG_DIR=logs/live uvicorn glasses_detector.api:app
+
+# Burst verdict, what the production line should call (5 frames at 5 fps)
+curl -F face_images=@f0.jpg -F face_images=@f1.jpg -F face_images=@f2.jpg \
+     -F face_images=@f3.jpg -F face_images=@f4.jpg http://127.0.0.1:8000/validate/glasses/batch
+# -> {"verdict": {"action": "pass|remove_glasses|retry_capture", "reason": ..., ...}, "frames": [...]}
+
+# Review logged frames, tune the blur gate
+python scripts/review_log.py logs/live --out review
 
 # Python
 from glasses_detector.predict import GlassesDetector

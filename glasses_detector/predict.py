@@ -1,14 +1,15 @@
 """Inference API for the onboarding validation step.
 
 Full production path: SCRFD face/landmark detection -> ROI-v1 eye-region crop
--> 3-class model -> p_glasses = P(eyeglasses). Sunglasses count as negative.
+-> 3-class model -> probability = P(eyeglasses) (legacy/calibrated) and
+eyewear_prob = P(eyeglasses)+P(sunglasses), which the verification gate decides on.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import cv2
 import numpy as np
@@ -31,6 +32,16 @@ class GlassesResult:
     face_found: bool
     det_score: float
     class_probs: tuple     # (none, eyeglasses, sunglasses) — telemetry only
+    eyewear_prob: float = 0.0   # P(eyeglasses) + P(sunglasses) = 1 - P(none): "any glasses"
+    blur_score: float = 0.0     # Laplacian variance of the gray 160px crop (higher = sharper)
+    eye_dist_px: float = 0.0    # inter-ocular distance in the submitted frame (face size proxy)
+    crop: Optional[np.ndarray] = field(default=None, repr=False, compare=False)  # BGR crop, logging only
+
+
+def blur_score(crop_bgr: np.ndarray) -> float:
+    """Variance of the Laplacian on the gray crop. ~0.1 ms at 160x160."""
+    gray = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
 class GlassesDetector:
@@ -86,4 +97,8 @@ class GlassesDetector:
         else:
             uncertain = abs(probability - self.threshold) < self.uncertainty_band
         return GlassesResult(wearing, confidence, probability, uncertain,
-                             True, det_score, tuple(round(float(p), 4) for p in probs))
+                             True, det_score, tuple(round(float(p), 4) for p in probs),
+                             eyewear_prob=float(1.0 - probs[0]),
+                             blur_score=blur_score(crop),
+                             eye_dist_px=float(np.linalg.norm(kps[1] - kps[0])),
+                             crop=crop)
