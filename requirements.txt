@@ -18,3 +18,8 @@ onnxruntime>=1.17
 fastapi>=0.110
 uvicorn[standard]>=0.29
 python-multipart>=0.0.9
+
+# HuggingFace checkpoint support (models/<dir> with config.json + model.safetensors,
+# selectable from the UI model dropdown). transformers 5.x needs torch>=2.5.
+transformers<5
+safetensors>=0.4

@@ -18,4 +18,5 @@ fi
 IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || true)"
 echo "Phone URL: https://${IP:-<this-machine-ip>}:${PORT}   (accept the certificate warning once)"
 exec "$UVICORN" glasses_detector.api:app --host 0.0.0.0 --port "$PORT" \
+  --workers 1 \
   --ssl-keyfile certs/dev-key.pem --ssl-certfile certs/dev-cert.pem

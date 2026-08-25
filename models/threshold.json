@@ -8,6 +8,16 @@
   "checkpoint": "runs/R5/best.pt",
   "cal_metrics_at_0.5": "acc=0.9907 p=0.9912 r=0.9815 f1=0.9863 auc=0.9992 sun_fpr=0.0082 ece=0.0055",
   "aggregate": {
-    "min_blur": 50.0
+    "quality_version": "quality-v2",
+    "min_blur": 2.2,
+    "min_brightness": 35.0,
+    "max_brightness": 220.0,
+    "min_contrast": 25.0,
+    "profile_quality": {
+      "clean": {"min_blur": 2.2},
+      "mild": {"min_blur": 2.1},
+      "bad_phone": {"min_blur": 1.9},
+      "extreme": {"min_blur": 1.7}
+    }
   }
 }

@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glasses Check</title>
+<style>
+  /* ---------- design tokens (dark-only, OLED) ---------- */
+  :root {
+    color-scheme: dark;
+    --bg: #05070c;
+    --surface: #0c111b;
+    --surface-2: #111a28;
+    --surface-3: #172234;
+    --border: #1e293b;
+    --border-strong: #33445e;
+    --text: #e6ecf5;
+    --muted: #94a3b8;
+    --faint: #64748b;
+    --accent: #38bdf8;
+    --glasses: #34d399;  --glasses-bg: rgba(52, 211, 153, .13);
+    --none:    #60a5fa;  --none-bg:    rgba(96, 165, 250, .13);
+    --unsure:  #fbbf24;  --unsure-bg:  rgba(251, 191, 36, .13);
+    --reject:  #64748b;  --reject-bg:  rgba(100, 116, 139, .18);
+    --error:   #f87171;  --error-bg:   rgba(248, 113, 113, .14);
+    --radius: 14px;
+    --radius-sm: 9px;
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: var(--font-ui);
+    background:
+      radial-gradient(1100px 500px at 50% -220px, #0d1b2e 0%, transparent 70%),
+      var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    padding-bottom: 4rem;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  button, select, input, label { font: inherit; }
+  button, select, [role="button"], label.btn { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 40;
+    background: rgba(5, 7, 12, .82);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar-inner {
+    max-width: 720px; margin: 0 auto; padding: .7rem 1rem;
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: .6rem; margin-right: auto; }
+  .brand-mark {
+    width: 38px; height: 38px; border-radius: 10px; flex: none;
+    background: linear-gradient(135deg, #123a5c, #0d2038);
+    border: 1px solid var(--border-strong);
+    display: grid; place-items: center; color: var(--accent);
+  }
+  .brand h1 { font-size: 1.05rem; margin: 0; letter-spacing: .01em; }
+  .brand p  { font-size: .74rem; margin: 0; color: var(--muted); }
+  .controls { display: flex; gap: .6rem; flex-wrap: wrap; }
+  .control { display: flex; flex-direction: column; gap: .22rem; }
+  .control > span {
+    font-size: .66rem; text-transform: uppercase; letter-spacing: .09em; color: var(--faint);
+  }
+  select {
+    appearance: none;
+    background: var(--surface-2) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>') no-repeat right .6rem center;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    min-height: 44px;
+    padding: 0 2rem 0 .75rem;
+    transition: border-color .15s;
+  }
+  select:hover { border-color: var(--border-strong); }
+  select:disabled { opacity: .5; cursor: progress; }
+
+  /* ---------- tabs ---------- */
+  .tabs {
+    max-width: 720px; margin: 1.1rem auto .9rem; padding: 0 1rem;
+    display: flex; gap: .4rem;
+  }
+  .tabs [role="tab"] {
+    flex: 1; min-height: 46px;
+    display: flex; align-items: center; justify-content: center; gap: .45rem;
+    background: var(--surface); color: var(--muted);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-weight: 550; font-size: .92rem;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .tabs [role="tab"]:hover { color: var(--text); border-color: var(--border-strong); }
+  .tabs [role="tab"][aria-selected="true"] {
+    background: var(--surface-3); color: var(--text); border-color: var(--border-strong);
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .tabs svg { flex: none; }
+
+  /* ---------- panels & cards ---------- */
+  main { max-width: 720px; margin: 0 auto; padding: 0 1rem; }
+  section[role="tabpanel"] { display: none; flex-direction: column; gap: .9rem; }
+  section[role="tabpanel"].on { display: flex; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+  }
+
+  /* ---------- shared status pieces ---------- */
+  .pill {
+    display: none; align-items: center; gap: .5rem;
+    align-self: center;
+    font-weight: 650; font-size: 1.05rem;
+    padding: .55rem 1.2rem; border-radius: 99px;
+    border: 1px solid transparent;
+  }
+  .pill.show { display: inline-flex; }
+  .yes { background: var(--glasses-bg); color: var(--glasses); border-color: rgba(52,211,153,.35); }
+  .no  { background: var(--none-bg);    color: var(--none);    border-color: rgba(96,165,250,.35); }
+  .meh { background: var(--unsure-bg);  color: var(--unsure);  border-color: rgba(251,191,36,.35); }
+  .err { background: var(--error-bg);   color: var(--error);   border-color: rgba(248,113,113,.35); }
+  .rej { background: var(--reject-bg);  color: var(--muted); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; min-height: 1.6rem; }
+  .chip {
+    display: inline-flex; align-items: baseline; gap: .35rem;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 7px; padding: .28rem .55rem; font-size: .74rem;
+  }
+  .chip .k { color: var(--faint); }
+  .chip .v { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); }
+  .chip.yes .v { color: var(--glasses); }
+  .chip.no .v  { color: var(--none); }
+  .chip.meh .v { color: var(--unsure); }
+  .chip.err .v { color: var(--error); }
+
+  .stage {
+    position: relative; width: 100%;
+    background: #000; border-radius: var(--radius); overflow: hidden;
+    border: 1px solid var(--border);
+    min-height: 220px;
+  }
+  .stage video, .stage canvas { display: block; width: 100%; height: auto; }
+  .banner {
+    position: absolute; top: .65rem; left: 50%; transform: translateX(-50%);
+    max-width: calc(100% - 1.4rem); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+    font-weight: 650; font-size: .95rem;
+    padding: .42rem 1rem; border-radius: 99px;
+    background: rgba(10, 14, 22, .78); color: var(--muted);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .banner.yes { background: rgba(6, 40, 28, .85); color: var(--glasses); border-color: rgba(52,211,153,.4); }
+  .banner.no  { background: rgba(9, 26, 48, .85); color: var(--none); border-color: rgba(96,165,250,.4); }
+  .banner.meh { background: rgba(45, 33, 6, .85); color: var(--unsure); border-color: rgba(251,191,36,.4); }
+  .banner.err { background: rgba(48, 12, 12, .85); color: var(--error); border-color: rgba(248,113,113,.4); }
+
+  .strip { display: block; width: 100%; height: 14px; border-radius: 5px; background: var(--surface-2); }
+  .legend { color: var(--faint); font-size: .74rem; text-align: center; line-height: 1.6; }
+  .legend i {
+    display: inline-block; width: .68em; height: .68em; border-radius: 2.5px;
+    margin: 0 .3em 0 .75em; vertical-align: baseline;
+  }
+  .note { color: var(--faint); font-size: .74rem; text-align: center; line-height: 1.55; }
+  .status-line { color: var(--muted); font-size: .86rem; text-align: center; min-height: 1.3em; }
+
+  .prog { width: 100%; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+  .prog > div { height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+
+  /* ---------- buttons ---------- */
+  .row { display: flex; gap: .55rem; flex-wrap: wrap; justify-content: center; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .45rem;
+    min-height: 44px; padding: 0 1.05rem;
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-weight: 550;
+    transition: border-color .15s, background .15s, transform .1s;
+  }
+  .btn:hover { border-color: var(--border-strong); background: var(--surface-3); }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .45; cursor: default; transform: none; }
+  .btn-primary {
+    background: linear-gradient(135deg, #175d92, #114368);
+    border-color: #2b74a8;
+  }
+  .btn-primary:hover { background: linear-gradient(135deg, #1a6aa7, #144d78); border-color: #3d8abf; }
+  .btn-danger { color: var(--error); }
+  .btn-danger:hover { border-color: rgba(248,113,113,.5); }
+
+  .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border);
+         border-radius: 99px; padding: .22rem; gap: .18rem; }
+  .seg button {
+    border: 0; background: transparent; color: var(--muted);
+    border-radius: 99px; min-height: 36px; padding: 0 .85rem; font-size: .84rem;
+    transition: background .15s, color .15s;
+  }
+  .seg button:hover { color: var(--text); }
+  .seg button.on { background: var(--surface-3); color: var(--text); box-shadow: 0 0 0 1px var(--border-strong); }
+
+  /* ---------- photo dropzone ---------- */
+  .drop {
+    display: flex; flex-direction: column; align-items: center; gap: .6rem;
+    border: 2px dashed var(--border-strong); border-radius: var(--radius);
+    background: var(--surface);
+    padding: 2.4rem 1.5rem; text-align: center; color: var(--muted);
+    transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--surface-2); color: var(--text); }
+  .drop svg { color: var(--faint); }
+  .drop b { color: var(--text); font-weight: 600; }
+  #preview {
+    max-width: min(320px, 100%); max-height: 320px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); align-self: center; display: none;
+  }
+
+  /* ---------- profile grid ---------- */
+  .profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
+  .profile-grid:empty { display: none; }
+  .profile-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-left-width: 3px; border-radius: var(--radius-sm);
+    padding: .6rem .7rem; min-width: 0;
+  }
+  .profile-card.yes { border-left-color: var(--glasses); }
+  .profile-card.no  { border-left-color: var(--none); }
+  .profile-card.meh { border-left-color: var(--unsure); }
+  .profile-head { display: flex; justify-content: space-between; align-items: baseline; gap: .4rem; }
+  .profile-name { font-weight: 650; font-size: .84rem; }
+  .profile-state { font-size: .72rem; font-weight: 650; }
+  .profile-card.yes .profile-state { color: var(--glasses); }
+  .profile-card.no  .profile-state { color: var(--none); }
+  .profile-card.meh .profile-state { color: var(--unsure); }
+  .profile-metrics {
+    color: var(--faint); font-size: .71rem; font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums; line-height: 1.55; margin-top: .25rem;
+    overflow-wrap: anywhere;
+  }
+  @media (max-width: 430px) { .profile-grid { grid-template-columns: 1fr; } }
+
+  .hidden-video { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+  /* ---------- toast ---------- */
+  #toast {
+    position: fixed; left: 50%; bottom: 1.2rem; transform: translateX(-50%) translateY(8px);
+    z-index: 60; opacity: 0; pointer-events: none;
+    background: var(--surface-3); color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: 99px;
+    padding: .55rem 1.1rem; font-size: .86rem;
+    transition: opacity .2s, transform .2s;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.err { color: var(--error); border-color: rgba(248,113,113,.5); }
+</style></head><body>
+
+<header class="topbar"><div class="topbar-inner">
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/></svg>
+    </div>
+    <div><h1>Glasses Check</h1><p>any eyewear counts — eyeglasses &amp; sunglasses</p></div>
+  </div>
+  <div class="controls">
+    <label class="control"><span>Model</span>
+      <select id="model" aria-label="active model"><option>loading…</option></select>
+    </label>
+    <label class="control"><span>Camera simulation</span>
+      <select id="degrade" aria-label="camera degradation profile">
+        <option value="all" selected>all qualities</option>
+        <option value="clean">clean</option>
+        <option value="mild">mild</option>
+        <option value="bad_phone">bad phone</option>
+        <option value="extreme">extreme</option>
+      </select>
+    </label>
+  </div>
+</div></header>
+
+<nav class="tabs" role="tablist" aria-label="input source">
+  <button id="tab-photo" role="tab" aria-selected="true" aria-controls="photo" onclick="show('photo')">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+    Photo</button>
+  <button id="tab-live" role="tab" aria-selected="false" aria-controls="live" onclick="show('live')">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+    Live</button>
+  <button id="tab-video" role="tab" aria-selected="false" aria-controls="video" onclick="show('video')">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 12h18M3 7.5h4M3 16.5h4M17 7.5h4M17 16.5h4"/></svg>
+    Video</button>
+</nav>
+
+<main>
+<!-- ---------- photo ---------- -->
+<section id="photo" role="tabpanel" aria-labelledby="tab-photo" class="on">
+  <div id="drop" class="drop" role="button" tabindex="0"
+       aria-label="upload a photo to check for glasses">
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
+    <div><b>Tap to take or pick a photo</b><br>or drop an image here</div>
+    <input id="file" type="file" accept="image/*" hidden>
+  </div>
+  <img id="preview" alt="uploaded photo preview">
+  <div id="result" class="pill" aria-live="polite"></div>
+  <div id="detail" class="chips"></div>
+  <div id="photo-profiles" class="profile-grid"></div>
+</section>
+
+<!-- ---------- live camera ---------- -->
+<section id="live" role="tabpanel" aria-labelledby="tab-live">
+  <div class="stage">
+    <video id="lv" autoplay playsinline muted></video>
+    <div id="lv-banner" class="banner" aria-live="polite">camera off</div>
+  </div>
+  <canvas id="lv-strip" class="strip" aria-hidden="true"></canvas>
+  <div class="legend">last frames:
+    <i style="background:var(--glasses)"></i>glasses
+    <i style="background:var(--none)"></i>none
+    <i style="background:var(--unsure)"></i>unsure
+    <i style="background:var(--reject)"></i>rejected (blur / exposure / contrast / face quality)</div>
+  <div id="lv-verdict" class="status-line" aria-live="polite"></div>
+  <div id="lv-stats" class="chips"></div>
+  <div id="lv-profiles" class="profile-grid"></div>
+  <div class="row">
+    <button id="lv-start" class="btn btn-primary" onclick="startLive()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4.5v15l13-7.5z"/></svg>
+      Start check</button>
+    <button id="lv-stop" class="btn btn-danger" onclick="stopLive()" disabled>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+      Stop</button>
+    <button id="lv-flip" class="btn" onclick="flipLive()" aria-label="switch between front and back camera">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/></svg>
+      Flip</button>
+  </div>
+  <div class="row" id="truth" role="group" aria-label="ground truth (for logging)">
+    <span class="legend" style="margin:0">I am actually:</span>
+    <div class="seg">
+      <button data-v="glasses" onclick="setTruth('glasses')">wearing glasses</button>
+      <button data-v="none" onclick="setTruth('none')">not wearing</button>
+      <button data-v="unknown" class="on" onclick="setTruth('unknown')">unknown</button>
+    </div>
+  </div>
+  <p class="note">source frames stream at up to 5 fps → all mode runs 4 inferences per source →
+    one decision every 5 sources · the truth toggle is only logged (GLASSES_LOG_DIR)
+    so wrong frames can be reviewed</p>
+</section>
+
+<!-- ---------- video scan ---------- -->
+<section id="video" role="tabpanel" aria-labelledby="tab-video">
+  <div class="row">
+    <label class="btn btn-primary">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
+      Choose video<input id="vfile" type="file" accept="video/*" hidden></label>
+    <select id="vstep" aria-label="scan rate">
+      <option value="0.0333">every frame (30/s)</option>
+      <option value="0.1">10 frames / s</option>
+      <option value="0.2" selected>5 frames / s</option>
+      <option value="0.5">2 frames / s</option>
+      <option value="1">1 frame / s</option>
+    </select>
+    <button id="vstart" class="btn" onclick="scanVideo()" disabled>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/></svg>
+      Scan</button>
+    <button id="vstop" class="btn btn-danger" onclick="stopScan()" disabled>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+      Stop</button>
+  </div>
+  <div class="stage">
+    <canvas id="vframe"></canvas>
+    <div id="v-banner" class="banner" aria-live="polite">no video loaded</div>
+  </div>
+  <div class="prog"><div id="vprog"></div></div>
+  <canvas id="vtl" class="strip" aria-hidden="true"></canvas>
+  <div class="legend">timeline:
+    <i style="background:var(--glasses)"></i>glasses
+    <i style="background:var(--none)"></i>none
+    <i style="background:var(--unsure)"></i>no face / unsure
+    <i style="background:var(--error)"></i>error</div>
+  <div id="vsum" class="status-line" aria-live="polite"></div>
+  <div id="vdet" class="chips"></div>
+  <div id="vprofiles" class="profile-grid"></div>
+  <video id="vid" class="hidden-video" playsinline muted preload="auto" aria-hidden="true"></video>
+</section>
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const COLORS = {yes: css('--glasses'), no: css('--none'), meh: css('--unsure'),
+                err: css('--error'), rej: css('--reject')};
+const BURST_MS = 200;                     /* 5 fps, like the production line */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ---------- toast ---------- */
+let toastTimer = 0;
+function toast(msg, isErr) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = isErr ? 'show err' : 'show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 3200);
+}
+
+/* ---------- model switcher ---------- */
+async function initModels() {
+  const sel = $('model');
+  try {
+    const r = await fetch('/models'); if (!r.ok) throw new Error();
+    const j = await r.json();
+    sel.replaceChildren();
+    for (const m of j.models) {
+      const o = document.createElement('option');
+      o.value = m.name; o.textContent = m.name; o.selected = m.name === j.active;
+      sel.append(o);
+    }
+  } catch (e) { sel.replaceChildren(); return; }
+  sel.onchange = async () => {
+    sel.disabled = true;
+    toast('loading model ' + sel.value + '…');
+    try {
+      const fd = new FormData(); fd.append('name', sel.value);
+      const r = await fetch('/models/select', {method: 'POST', body: fd});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      toast('model active: ' + sel.value);
+    } catch (e) {
+      toast('model switch failed: ' + e.message, true);
+      await initModels();
+    }
+    sel.disabled = false;
+  };
+}
+initModels();
+
+/* ---------- tabs ---------- */
+function show(tab) {
+  for (const t of ['photo', 'live', 'video']) {
+    $(t).classList.toggle('on', t === tab);
+    $('tab-' + t).setAttribute('aria-selected', t === tab ? 'true' : 'false');
+  }
+  if (tab !== 'live') stopLive();
+  if (tab !== 'video') stopScan();
+}
+
+/* ---------- shared rendering ---------- */
+function classify(j) {
+  if (!j.face_found) return {cls: 'meh', label: 'no face'};
+  if (j.uncertain) return {cls: 'meh', label: 'not sure'};
+  if (j.wearing_glasses) return {cls: 'yes', label: 'glasses detected'};
+  return {cls: 'no', label: 'no glasses'};
+}
+function chip(k, v, cls) {
+  const el = document.createElement('span');
+  el.className = 'chip' + (cls ? ' ' + cls : '');
+  const kEl = document.createElement('span'); kEl.className = 'k'; kEl.textContent = k;
+  const vEl = document.createElement('span'); vEl.className = 'v'; vEl.textContent = v;
+  el.append(kEl, vEl);
+  return el;
+}
+function metricChips(el, j) {
+  el.replaceChildren(
+    chip('p(eyewear)', (j.eyewear_prob !== undefined ? j.eyewear_prob : j.probability).toFixed(3),
+         j.wearing_glasses ? 'yes' : 'no'),
+    chip('none', j.class_probs.none.toFixed(2)),
+    chip('eyeglasses', j.class_probs.eyeglasses.toFixed(2)),
+    chip('sunglasses', j.class_probs.sunglasses.toFixed(2)),
+    chip('face', j.det_score.toFixed(2)),
+  );
+  if (j.blur_score !== undefined) el.append(chip('blur', j.blur_score.toFixed(1)));
+  if (j.brightness !== undefined) {
+    el.append(chip('light', j.brightness.toFixed(0)), chip('contrast', j.contrast.toFixed(0)));
+  }
+  if (j.degradation_profile) el.append(chip('profile', j.degradation_profile));
+}
+function actionStyle(action) {
+  if (action === 'remove_glasses') return {cls: 'yes', label: 'glasses'};
+  if (action === 'pass') return {cls: 'no', label: 'none'};
+  return {cls: 'meh', label: 'retry'};
+}
+function renderProfiles(el, profiles, verdicts) {
+  el.replaceChildren();
+  if (!profiles || !Object.keys(profiles).length) return;
+  for (const name of ['clean', 'mild', 'bad_phone', 'extreme']) {
+    const p = profiles[name]; if (!p) continue;
+    const verdict = verdicts && verdicts[name];
+    const shown = actionStyle(verdict ? verdict.action : p.action);
+    const card = document.createElement('div');
+    card.className = 'profile-card ' + shown.cls;
+    const head = document.createElement('div'); head.className = 'profile-head';
+    const title = document.createElement('span'); title.className = 'profile-name';
+    title.textContent = name.replace('_', ' ');
+    const state = document.createElement('span'); state.className = 'profile-state';
+    state.textContent = shown.label;
+    head.append(title, state);
+    const metrics = document.createElement('div'); metrics.className = 'profile-metrics';
+    const quality = p.quality_valid ? 'usable' : 'rejected:' + (p.quality_reject_reason || 'quality');
+    metrics.textContent = 'p=' + p.eyewear_prob.toFixed(3)
+      + ' · ' + quality + ' · blur=' + p.blur_score.toFixed(2)
+      + ' · light=' + p.brightness.toFixed(0) + ' · contrast=' + p.contrast.toFixed(0)
+      + ' · det=' + p.det_score.toFixed(2)
+      + (verdict ? ' · window=' + verdict.action : '');
+    card.append(head, metrics);
+    el.append(card);
+  }
+}
+async function postBlob(blob) {
+  const fd = new FormData(); fd.append('face_image', blob, 'frame.jpg');
+  fd.append('degradation_profile', $('degrade').value);
+  const r = await fetch('/validate/glasses', {method: 'POST', body: fd});
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+/* draw the current frame of a <video> onto a canvas, longest side <= maxSide */
+function grab(src, cv, maxSide) {
+  const w = src.videoWidth, h = src.videoHeight;
+  if (!w || !h) return false;
+  const s = Math.min(1, (maxSide || 640) / Math.max(w, h));
+  cv.width = Math.round(w * s); cv.height = Math.round(h * s);
+  cv.getContext('2d').drawImage(src, 0, 0, cv.width, cv.height);
+  return true;
+}
+const toBlob = cv => new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+function setBanner(el, cls, text) { el.className = 'banner ' + (cls || ''); el.textContent = text; }
+function paintStrip(cv, items, total) {
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.max(1, Math.round(cv.clientWidth * dpr));
+  cv.height = Math.round(14 * dpr);
+  const ctx = cv.getContext('2d'), w = cv.width / total;
+  items.forEach((c, i) => { ctx.fillStyle = COLORS[c]; ctx.fillRect(i * w, 0, Math.ceil(w), cv.height); });
+}
+
+/* ---------- photo ---------- */
+const drop = $('drop'), inp = $('file'), res = $('result'), det = $('detail'), prev = $('preview');
+const photoProfiles = $('photo-profiles');
+drop.onclick = () => inp.click();
+drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inp.click(); } };
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over');
+                     if (e.dataTransfer.files[0]) send(e.dataTransfer.files[0]); };
+inp.onchange = () => inp.files[0] && send(inp.files[0]);
+async function send(f) {
+  prev.src = URL.createObjectURL(f); prev.style.display = 'block';
+  res.className = 'pill show'; res.textContent = 'checking…';
+  det.replaceChildren(); photoProfiles.replaceChildren();
+  let j;
+  try { j = await postBlob(f); }
+  catch (e) { res.className = 'pill show err'; res.textContent = 'error'; return; }
+  const c = classify(j);
+  res.className = 'pill show ' + c.cls; res.textContent = c.label;
+  metricChips(det, j);
+  renderProfiles(photoProfiles, j.profile_results);
+}
+
+/* ---------- live camera: stream frames at 5 fps -> /stream -> a decision every 5 frames ---------- */
+const lv = $('lv'), lvBanner = $('lv-banner'), lvStats = $('lv-stats'), lvStrip = $('lv-strip');
+const lvVerdict = $('lv-verdict'), lvProfiles = $('lv-profiles');
+const work = document.createElement('canvas');
+let stream = null, liveToken = 0, facing = 'user', truth = 'unknown';
+const liveSession = Math.random().toString(36).slice(2, 10);
+function setTruth(v) {
+  truth = v;
+  document.querySelectorAll('#truth button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+}
+const VERDICT = {
+  pass:           {cls: 'no',  label: 'NO GLASSES ✓ (pass)'},
+  remove_glasses: {cls: 'yes', label: 'GLASSES DETECTED (would stop)'},
+  retry_capture:  {cls: 'meh', label: 'UNSURE (retry)'},
+};
+const HINT = {blurry: 'hold still', no_face: 'face the camera', too_far: 'come closer',
+              low_det: 'face the camera', too_dark: 'find more light',
+              too_bright: 'avoid direct light', low_contrast: 'find better light',
+              mixed: 'hold still', glasses: '', ok: ''};
+async function startLive() {
+  stopLive();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setBanner(lvBanner, 'err', 'camera blocked: open the https:// address'); return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(
+      {video: {facingMode: facing, width: {ideal: 640}, height: {ideal: 480}}, audio: false});
+  } catch (e) { setBanner(lvBanner, 'err', 'camera error: ' + e.message); return; }
+  lv.srcObject = stream;
+  lv.style.transform = facing === 'user' ? 'scaleX(-1)' : '';
+  try { await lv.play(); } catch (e) {}
+  $('lv-start').disabled = true; $('lv-stop').disabled = false;
+  setBanner(lvBanner, '', 'starting…');
+  liveLoop(++liveToken);
+}
+async function postStream(blob, truthValue, session, reset) {
+  const fd = new FormData(); fd.append('face_image', blob, 'frame.jpg');
+  fd.append('truth', truthValue); fd.append('session_id', session);
+  fd.append('reset', reset ? 'true' : 'false');
+  fd.append('degradation_profile', $('degrade').value);
+  const r = await fetch('/validate/glasses/stream', {method: 'POST', body: fd});
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+/* stream one frame every BURST_MS (5 fps); the server answers every frame and adds a
+   verdict on every 5th frame. Frames are shown live; the banner holds the last decision. */
+async function liveLoop(tok) {
+  const hist = [], counts = {pass: 0, remove_glasses: 0, retry_capture: 0};
+  const session = liveSession + '-' + tok;
+  let next = performance.now(), first = true, lastVerdict = null, lat = 0;
+  while (tok === liveToken && stream) {
+    const wait = next - performance.now();
+    if (wait > 0) await sleep(wait);
+    next = Math.max(next + BURST_MS, performance.now());     /* keep 5 fps cadence, never pile up */
+    if (!grab(lv, work)) { await sleep(50); continue; }
+    const t0 = performance.now();
+    let j;
+    try { j = await postStream(await toBlob(work), truth, session, first); first = false; }
+    catch (e) { if (tok === liveToken) setBanner(lvBanner, 'err', 'server error'); await sleep(500); continue; }
+    if (tok !== liveToken) return;
+    lat = performance.now() - t0;
+    const f = j.frame;
+    const sourceStyle = actionStyle(j.source_action || f.action);
+    hist.push(sourceStyle.cls); while (hist.length > 40) hist.shift();
+    paintStrip(lvStrip, hist, 40);
+    renderProfiles(lvProfiles, j.profile_frames, j.profile_verdicts);
+    if (j.verdict) {
+      const v = j.verdict, vv = VERDICT[v.action] || {cls: 'err', label: v.action}, hint = HINT[v.reason] || '';
+      lastVerdict = v; counts[v.action] = (counts[v.action] || 0) + 1;
+      setBanner(lvBanner, vv.cls, '#' + j.decision_no + ' ' + vv.label + (hint ? ' — ' + hint : ''));
+      lvVerdict.textContent = 'decision #' + j.decision_no + ': valid ' + v.n_valid + '/' + v.n_frames
+        + ' · votes glasses=' + v.glasses_votes + ' none=' + v.none_votes + ' unsure=' + v.unsure_votes
+        + ' · mean p=' + v.mean_p.toFixed(3)
+        + (Object.keys(v.rejected).length ? ' · rejected ' + JSON.stringify(v.rejected) : '')
+        + ' · totals: pass ' + counts.pass + ' / stop ' + counts.remove_glasses + ' / retry ' + counts.retry_capture;
+    } else if (!lastVerdict) {
+      setBanner(lvBanner, '', 'collecting ' + j.window + '/' + j.decision_every + '…');
+    }
+    const frameState = f.valid
+      ? (f.vote === 'glasses' ? ['frame', 'glasses', 'yes']
+         : f.vote === 'none' ? ['frame', 'none', 'no'] : ['frame', 'unsure', 'meh'])
+      : ['frame', 'rejected: ' + f.reject_reason, 'err'];
+    lvStats.replaceChildren(
+      chip('frame', '#' + j.frame_no),
+      chip('window', j.window + '/' + j.decision_every),
+      chip(frameState[0], frameState[1], frameState[2]),
+      chip('p(eyewear)', f.eyewear_prob.toFixed(2)),
+      chip('blur', f.blur_score.toFixed(1)),
+      chip('light', f.brightness.toFixed(0)),
+      chip('contrast', f.contrast.toFixed(0)),
+      chip('det', f.det_score.toFixed(2)),
+      chip('profile', f.degradation_profile),
+      chip('latency', Math.round(lat) + ' ms'),
+    );
+  }
+}
+function stopLive() {
+  liveToken++;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  lv.srcObject = null;
+  $('lv-start').disabled = false; $('lv-stop').disabled = true;
+  setBanner(lvBanner, '', 'camera off');
+}
+function flipLive() { facing = facing === 'user' ? 'environment' : 'user'; if (stream) startLive(); }
+
+/* ---------- video file: seek step by step, POST each frame, paint a timeline ---------- */
+const vid = $('vid'), vframe = $('vframe'), vBanner = $('v-banner'), vprog = $('vprog');
+const vtl = $('vtl'), vsum = $('vsum'), vdet = $('vdet'), vprofiles = $('vprofiles');
+let scanToken = 0;
+$('vfile').onchange = () => {
+  const f = $('vfile').files[0]; if (!f) return;
+  stopScan();
+  vid.src = URL.createObjectURL(f); vid.load();
+  vsum.textContent = 'loading…'; vdet.replaceChildren(); vprog.style.width = '0';
+  $('vstart').disabled = true; setBanner(vBanner, '', 'loading…');
+};
+vid.onloadedmetadata = async () => {
+  vsum.textContent = vid.duration.toFixed(1) + ' s · ' + vid.videoWidth + '×' + vid.videoHeight;
+  await seekTo(0); grab(vid, vframe);
+  $('vstart').disabled = false; setBanner(vBanner, '', 'ready — press Scan');
+};
+vid.onerror = () => { vsum.textContent = 'this browser could not decode the video';
+                      setBanner(vBanner, 'err', 'video error'); };
+function seekTo(t) {
+  return new Promise(resolve => {
+    let done = false;
+    const fin = () => { if (done) return; done = true; vid.removeEventListener('seeked', fin); resolve(); };
+    vid.addEventListener('seeked', fin);
+    setTimeout(fin, 2000);           /* never hang if seeked doesn't fire */
+    vid.currentTime = t;
+  });
+}
+async function scanVideo() {
+  const tok = ++scanToken;
+  $('vstart').disabled = true; $('vstop').disabled = false;
+  const step = parseFloat($('vstep').value), D = vid.duration;
+  try { await vid.play(); vid.pause(); } catch (e) {}   /* iOS: prime the decoder */
+  const counts = {yes: 0, no: 0, meh: 0, err: 0}; let n = 0, summary = '';
+  const dpr = window.devicePixelRatio || 1;
+  vtl.width = Math.round(vtl.clientWidth * dpr); vtl.height = Math.round(14 * dpr);
+  const ctx = vtl.getContext('2d'); ctx.clearRect(0, 0, vtl.width, vtl.height);
+  for (let t = 0; t < D && tok === scanToken; t += step) {
+    await seekTo(t);
+    if (tok !== scanToken) break;
+    if (!grab(vid, vframe)) continue;
+    let c, j = null;
+    try { j = await postBlob(await toBlob(vframe)); c = classify(j); }
+    catch (e) { c = {cls: 'err', label: 'server error'}; }
+    if (tok !== scanToken) break;
+    counts[c.cls]++; n++;
+    ctx.fillStyle = COLORS[c.cls];
+    ctx.fillRect(t / D * vtl.width, 0, Math.max(1, step / D * vtl.width), vtl.height);
+    vprog.style.width = Math.min(100, (t + step) / D * 100) + '%';
+    setBanner(vBanner, c.cls, c.label + ' @ ' + t.toFixed(1) + 's');
+    summary = n + ' frames · glasses ' + counts.yes + ' (' + Math.round(100 * counts.yes / n) + '%)'
+      + ' · no glasses ' + counts.no + ' · no face/unsure ' + counts.meh
+      + (counts.err ? ' · errors ' + counts.err : '');
+    vsum.textContent = summary;
+    if (j) {
+      metricChips(vdet, j);
+      renderProfiles(vprofiles, j.profile_results);
+    }
+  }
+  if (tok === scanToken) {
+    $('vstart').disabled = false; $('vstop').disabled = true;
+    vsum.textContent = 'done · ' + summary;
+  }
+}
+function stopScan() {
+  scanToken++;
+  $('vstart').disabled = !vid.src; $('vstop').disabled = true;
+}
+</script></body></html>

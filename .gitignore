@@ -10,3 +10,4 @@ checkpoints/
 *.npy
 logs/
 certs/
+models/checkpoint-266/

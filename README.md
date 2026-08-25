@@ -93,7 +93,7 @@ result.uncertain        # True near the threshold -> ask user to retry capture
 
 ```bash
 GLASSES_CHECKPOINT=checkpoints/glasses.pt GLASSES_THRESHOLD=0.42 \
-    uvicorn glasses_detector.api:app --port 8000
+    uvicorn glasses_detector.api:app --port 8000 --workers 1
 ```
 
 ```bash

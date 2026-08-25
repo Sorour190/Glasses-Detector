@@ -64,3 +64,47 @@ def load_checkpoint(path: str, device: str = "cpu") -> nn.Module:
     model.load_state_dict(state["model"] if "model" in state else state)
     model.to(device).eval()
     return model
+
+
+def _rebuild_sequential_head(state: dict, act: type[nn.Module] = nn.GELU) -> nn.Sequential:
+    """Rebuild a Sequential classifier saved as classifier.N.* keys.
+
+    Linear layers carry weights and fix their own sizes; the parameter-free
+    slots between them are assumed to be activations (act; the checkpoint
+    does not record which module class sat there)."""
+    import re
+    linears = {}
+    for key, tensor in state.items():
+        m = re.fullmatch(r"classifier\.(\d+)\.weight", key)
+        if m:
+            linears[int(m.group(1))] = tensor.shape  # (out_features, in_features)
+    layers = []
+    for i in range(max(linears) + 1):
+        if i in linears:
+            out_f, in_f = linears[i]
+            layers.append(nn.Linear(in_f, out_f))
+        else:
+            layers.append(act())
+    return nn.Sequential(*layers)
+
+
+def load_hf_checkpoint(path: str, device: str = "cpu") -> nn.Module:
+    """Load a HuggingFace image-classification checkpoint directory
+    (config.json + model.safetensors), e.g. a transformers Trainer save.
+
+    Handles both the standard single-Linear head and custom Sequential heads
+    saved as classifier.N.* keys. Requires transformers + safetensors."""
+    from pathlib import Path
+
+    from safetensors.torch import load_file
+    from transformers import AutoConfig, AutoModelForImageClassification
+
+    cfg = AutoConfig.from_pretrained(path)
+    model = AutoModelForImageClassification.from_config(cfg)
+    state = load_file(str(Path(path) / "model.safetensors"))
+    if any(re_key.startswith("classifier.") and re_key.split(".")[1].isdigit()
+           for re_key in state):
+        model.classifier = _rebuild_sequential_head(state)
+    model.load_state_dict(state)
+    model.to(device).eval()
+    return model
